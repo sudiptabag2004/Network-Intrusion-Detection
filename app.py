@@ -6,6 +6,7 @@ import joblib
 import json
 import plotly.graph_objects as go
 import plotly.express as px
+import plotly.io as pio
 
 # === Load model and artifacts ===
 MODEL_PATH   = "nids_model_saved/mlp_model.h5"
@@ -21,16 +22,14 @@ with open(TAU_PATH) as f:
 with open(COLS_PATH) as f:
     columns = json.load(f)
 
-# === Streamlit page setup ===
+# === Streamlit UI ===
 st.set_page_config(page_title="NIDS Dashboard", layout="wide")
 st.title("🔐 Network Intrusion Detection System")
 st.markdown("Upload a CSV file with network traffic data to classify each flow as **Malicious** or **Benign**.")
 
-# === CSV Format Guide in Sidebar ===
 st.sidebar.header("📄 CSV Format Guide")
 st.sidebar.markdown("""
 Your CSV should include columns like:
-
 - `dur`, `proto`, `service`, `state`
 - `sbytes`, `dbytes`, `spkts`, `dpkts`
 
@@ -40,7 +39,6 @@ Your CSV should include columns like:
 📌 Only `.csv` format supported.
 """)
 
-# === Upload CSV ===
 uploaded_file = st.file_uploader("📁 Upload Network Flow CSV", type="csv")
 
 if uploaded_file is not None:
@@ -67,11 +65,11 @@ if uploaded_file is not None:
         df['Intrusion_Probability'] = probs.round(4)
         df['Prediction'] = np.where(preds == 1, "Malicious", "Benign")
 
-        # === Results Table ===
+        # === Display Results
         st.subheader("🧠 Prediction Results")
         st.dataframe(df[["Prediction", "Intrusion_Probability"]], use_container_width=True)
 
-        # === Summary Counts ===
+        # === Summary
         summary_df = df["Prediction"].value_counts().rename_axis("Traffic Type").reset_index(name="Count")
         malicious_count = summary_df.loc[summary_df["Traffic Type"] == "Malicious", "Count"].sum()
         benign_count    = summary_df.loc[summary_df["Traffic Type"] == "Benign", "Count"].sum()
@@ -84,7 +82,7 @@ if uploaded_file is not None:
         - 🔢 **Total Records**: {total}
         """)
 
-        # === 3D-STYLE BAR CHART ===
+        # === 3D Bar Chart
         bar_fig = go.Figure(data=[
             go.Bar(
                 x=summary_df["Traffic Type"],
@@ -93,46 +91,52 @@ if uploaded_file is not None:
                     color=['#D65A5A' if x == "Malicious" else '#6CA966' for x in summary_df["Traffic Type"]],
                     line=dict(color='rgba(0,0,0,0.6)', width=1.5),
                     opacity=0.85
-                ),
-                width=0.6
+                )
             )
         ])
         bar_fig.update_layout(
-            title="📊 Traffic Type Count (3D Bar Style)",
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(size=12),
-            xaxis=dict(title="", tickfont=dict(size=11)),
-            yaxis=dict(title="Count", tickfont=dict(size=11)),
+            title="📊 Traffic Type Count (3D Style)",
             template="plotly_white"
         )
         st.plotly_chart(bar_fig, use_container_width=True)
 
-        # === 3D-STYLE PIE CHART ===
+        # === 3D Pie Chart
         pie_fig = go.Figure(data=[
             go.Pie(
                 labels=summary_df["Traffic Type"],
                 values=summary_df["Count"],
                 hole=0.3,
-                marker=dict(
-                    colors=["#6CA966", "#D65A5A"],
-                    line=dict(color='white', width=1.5)
-                ),
+                marker=dict(colors=["#6CA966", "#D65A5A"], line=dict(color='white', width=1.5)),
                 pull=[0.02, 0],
-                rotation=90,
                 textinfo="label+percent",
                 insidetextorientation="radial"
             )
         ])
         pie_fig.update_layout(
-            title="🍩 Traffic Proportion (3D Donut Style)",
-            showlegend=True,
+            title="🍩 Traffic Proportion (Donut Style)",
             template="plotly_white"
         )
         st.plotly_chart(pie_fig, use_container_width=True)
 
-        # === Download Button ===
-        st.download_button("📥 Download Results as CSV", df.to_csv(index=False), file_name="nids_predictions.csv")
+        # === Create HTML Report for Download
+        report_html = f"""
+        <html><head><title>NIDS Report</title></head><body>
+        <h2>📊 Network Intrusion Detection Report</h2>
+        <p><b>Total Records:</b> {total}</p>
+        <p><b>Malicious:</b> {malicious_count} &nbsp;&nbsp;&nbsp; <b>Benign:</b> {benign_count}</p>
+        <h3>🔢 Sample Prediction Table</h3>
+        {df[['Prediction', 'Intrusion_Probability']].head(10).to_html(index=False)}
+        <h3>📊 Bar Chart</h3>
+        {bar_fig.to_html(full_html=False, include_plotlyjs='cdn')}
+        <h3>🍩 Pie Chart</h3>
+        {pie_fig.to_html(full_html=False, include_plotlyjs='cdn')}
+        </body></html>
+        """
+            
+        st.download_button("📄 Download Full Report (HTML)", report_html, file_name="nids_report.html", mime="text/html")
+
+        # === Also CSV option
+        st.download_button("📥 Download Prediction CSV (numerical values)", df.to_csv(index=False), file_name="nids_predictions.csv")
 
     except Exception as e:
         st.error(f"❌ Error during processing:\n\n`{e}`")
